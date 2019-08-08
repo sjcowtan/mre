@@ -118,9 +118,14 @@ sea_areas_sf <- polygons_df %>%
 print(paste("In descending order of size", levels(sea_areas_sf$name)))
 ```
 
+```{r sort_polygon_file}
+# arrange(match()) allows sorting into an arbitrary order
+polygons_nested_df <- polygons_nested_df %>%
+  arrange(match(Name, levels(sea_areas_sf$name)))
+```
+
 ```{r name_seas}
-# Changes sea region to last one in file
-# Need mechanism to make that smallest
+# Changes sea region to last one in file, which is smallest
 for (r in 1:nrow(polygons_nested_df)) {
     data_df <- data_df %>%
       mutate(sea_region = ifelse(
