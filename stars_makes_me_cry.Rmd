@@ -1,0 +1,103 @@
+---
+title: "Test 3D data in stars{}"
+author: "Susannah"
+date: "30/01/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libs}
+library(stars)
+```
+
+```{r globals}
+# Lat/long
+cell_size = 1
+```
+
+
+```{r make_data}
+data_df <- data.frame(
+  Latitude = c(rep(c(1:3, 2, 1, 3), 2), 1.2),
+  Longitude = c(rep(c(1:3, 3, 1, 2), 2), 2.3),
+  Year = c(rep(2000:2001, each = 6), 2001),
+  presence = c(rep(1, 4), 1, rep(1, 8))
+)
+
+data_df
+```
+
+```{r starify, eval = T}
+data_st <- st_as_stars(data_df, coords = c("Longitude", "Latitude", "Year"))
+#Doesn't work
+#data_st <- st_set_dimensions(data_st, "x", 
+#                             offset = 0,
+#                             delta = cell_size)
+data_st
+```
+
+```{r look_raw, eval = T}
+plot(data_st[,,,1], text_values = TRUE, main = "1", breaks = "equal",
+     axes = T)
+plot(data_st[,,,2], text_values = TRUE, main = "2", breaks = "equal",
+     axes = T)
+
+```
+
+Clearly the cell sizes are all over the place.  Try warping it to a grid.
+
+```{r make_grid}
+grid_st <- st_as_stars(array(0, dim = c(5, 5, 2)))
+grid_st <- st_set_dimensions(grid_st, 
+                             names = c("Longitude", "Latitude", "Year"))
+grid_st
+```
+
+```{r warp, eval = T}
+data_st <- st_warp(data_st, grid_st, cellsize = cell_size)
+data_st
+```
+
+```{r look_warp, eval = T}
+plot(data_st[,,,1], text_values = TRUE, main = "1", breaks = "equal",
+     axes = T)
+plot(data_st[,,,2], text_values = TRUE, main = "2", breaks = "equal",
+     axes = T)
+```
+
+This looks not like an aggregation of those data.
+
+# or
+
+```{r via_sf}
+data_sf <- st_as_sf(data_df, coords = c("Longitude", "Latitude", "Year"))
+data_sf
+```
+
+```{r sf_st}
+data_st <- st_as_stars(data_sf)
+data_st
+```
+
+```{r rasterize, eval = F}
+# Rasterize data to grid, adding presence values and counting every cell
+# touched by a point 
+data_st <- st_rasterize(data_sf["presence"],
+                        template = grid_st,
+                        #dx = 1, dy = 1,
+                        options = c("MERGE_ALG=ADD", "ALL_TOUCHED=TRUE")
+)
+data_st
+```
+Gives a subsetting error on the rasterize command, yet `data_sf["presence"]`
+prints uncomplainingly?
+
+```{r look_via_sf, eval = F}
+plot(data_st[,,,1], text_values = TRUE, main = "1", breaks = "equal",
+     axes = TRUE)
+plot(data_st[,,,2], text_values = TRUE, main = "2", breaks = "equal",
+     axes = TRUE)
+```
