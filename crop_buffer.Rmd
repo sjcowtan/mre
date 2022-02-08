@@ -29,6 +29,7 @@ species_sf <- st_as_sf(species_df,
 ```
 
 ```{r coastline}
+# Map from rnaturalearth
 coastlines <- ne_coastline(scale = 50, returnclass = "sf")
 
 # Reproject
