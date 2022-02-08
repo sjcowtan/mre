@@ -23,6 +23,7 @@ species_df <- data.frame(
 ```
 
 ```{r data_to_sf}
+# Convert Lat/Long to column of class geometry
 species_sf <- st_as_sf(species_df, 
                        coords = c("Longitude", "Latitude"),
                        crs = st_crs(4326))
