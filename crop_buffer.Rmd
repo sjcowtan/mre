@@ -43,7 +43,7 @@ coastlines <- st_transform(coastlines, crs = st_crs(species_sf))
 bbox <- st_bbox(species_sf, crs = st_crs(species_sf))
 
 # Crop to bbox plus buffer
-buffer_box <- st_crop(coastlines, st_buffer(st_as_sfc(bbox), dist = 50000))
+buffer_box <- st_buffer(st_as_sfc(bbox), dist = 50000)
 ```
 
 ```{r plot}
