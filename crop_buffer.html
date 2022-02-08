@@ -183,7 +183,8 @@ library(sf)</code></pre>
 <pre class="r"><code>species_sf &lt;- st_as_sf(species_df, 
                        coords = c(&quot;Longitude&quot;, &quot;Latitude&quot;),
                        crs = st_crs(4326))</code></pre>
-<pre class="r"><code>coastlines &lt;- ne_coastline(scale = 50, returnclass = &quot;sf&quot;)
+<pre class="r"><code># Coastline geometry from rnaturalearth
+coastlines &lt;- ne_coastline(scale = 50, returnclass = &quot;sf&quot;)
 
 # Reproject
 # Pretty sure this isn&#39;t necessary, as it says WGS84 already
