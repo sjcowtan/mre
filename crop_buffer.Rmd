@@ -1,0 +1,172 @@
+---
+title:  "st_crop() without tears"
+subtitle: "Vanquishing the \"attribute variables are assumed to be spatially constant throughout all geometries\" warnings"
+author: "Susannah Cowtan"
+date: "08/02/2022"
+output: html_document
+---
+
+# Cropping a map to a box larger than the data suggest
+
+I'm plotting presence records on a coastline map.  If I crop the map directly
+to a box around the data, made using `st_bbox()`, then for those points which 
+are at the edge, it is a matter of luck whether I can see if they are on the 
+coastline or not. This doesn't work for me; I need to crop the map slightly 
+bigger.
+
+There is also a warning generated when you crop a map geometry which has been
+generated using `rnaturalearth{}`: "attribute variables are assumed to be 
+spatially constant throughout all geometries".  Warnings offend me.  I want to 
+get rid of them, and not by putting `warning = FALSE` in my chunk header. So, 
+here goes.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      dev = "png",
+                      dpi = 300)
+```
+
+```{r libs}
+library(ggplot2)
+suppressPackageStartupMessages(library(dplyr))
+library(rnaturalearth)
+library(sf)
+```
+
+First we make up some minimal, boring data.  I cheated and moved them till they
+were on the coast.
+
+```{r fake_data}
+species_df <- tibble(
+  Longitude = c(3.8, 3.1, 3.4),
+  Latitude = c(43.5, 43, 43.3)
+)
+```
+
+I want these to be in simple features format (package `sf{}`) for compatibility
+with the map.  This has the added advantage that I don't have to get clever
+with my axis tick labels, that pesky degree symbol is done for me!
+
+```{r data_to_sf}
+# Convert lat/long columns to a column of class geometry
+species_sf <- st_as_sf(species_df, 
+                       coords = c("Longitude", "Latitude"),
+                       crs = st_crs(4326))
+```
+
+```{r boring_points, fig.height = 3, fig.align = "center", fig.cap = "Three boring points", echo = FALSE}
+species_sf %>%
+  ggplot() +
+  geom_sf(colour = "#328573", size = 2.5) +
+  scale_x_continuous(limits = c(round(min(species_df$Longitude)),
+                                round(max(species_df$Longitude)))) +
+  theme_bw()
+```
+
+Now I use the `rnaturalearth{}` package to get a nice coastline map.  This 
+turned out to be the cause of the warning, so I set its `relation_to_geometry`
+attribute to be `"constant"`, and this magically gets rid of the problem.  There
+is some explanation of this in [the sf vignette](https://r-spatial.github.io/sf/articles/sf1.html#how-attributes-relate-to-geometries") but it's not exactly easy to follow. When reading
+it, I figured I'd need to set `agr` to `"constant"` instead of `NA` on the data and the crop box too, but that turned out to be unnecessary.
+
+```{r coastline}
+# Coastline geometry from rnaturalearth
+coastlines <- ne_coastline(scale = 50, returnclass = "sf") %>%
+  # Get rid of the annoying warning from st_crop about 
+  # attributes assumed constant
+  st_set_agr("constant")
+```
+
+```{r plot_coastline, echo = F, fig.height = 3, fig.cap = "This is the map `rnaturalearth::ne_coastline()` generates at scale 50", fig.align = "center"}
+ggplot(data = coastlines) +
+  geom_sf() +
+  theme_bw()
+```
+
+This is the medium resolution map. It's a vector graphic, so you can zoom in by 
+cropping it without it degrading, although if you zoom in too far, it gets a bit 
+pointy. There is a higher resolution version, but you need to install 
+`rnaturalearthhires` for that, and currently for me, on R 4.1.2, that only works 
+with `remotes::install_github()`.  
+
+Now I need to create a box to crop the map to. In my real data, I have thousands 
+of different point locations on some of the maps I'm generating, while others 
+have only one. I initially thought I'd create a box around the data with 
+`st_bbox()`, but that doesn't work if you only have a single location. I 
+could put a buffer around each point, and put a box around that.
+That would be just fine for these three points, but it's computationally
+expensive when there are a lot of points.  So what I'm actually doing is
+creating an sf object with only two points, one at the minimum latitude
+and longitude, and one at the maximum. 
+
+```{r minmax_data}
+# Minmax dataset to crop map
+minmax_sf <- tibble(
+  Latitude = range(species_df$Latitude),
+  Longitude = range(species_df$Longitude)
+) %>%
+  st_as_sf(coords = c("Longitude", "Latitude"),
+           crs = st_crs(4326))
+```
+
+Now I create my crop box, by putting a buffer around the two points, so instead
+of them being points they are now circles. The buffer is specified in metres, 
+and I'd rather have specified it in degrees, [but that doesn't seem to be
+working optimally](https://github.com/r-spatial/sf/issues/1692). 
+
+```{r buffer_map}
+# Cropped map
+buffered_sf <- minmax_sf %>%
+    # Apply buffer to minmax points (in metres)
+    st_buffer(dist = 50000) 
+```
+
+```{r plot_buffer, echo = FALSE, fig.height = 3, fig.align = "center", fig.cap = "These points are now pretty big circles"}
+buffered_sf %>%
+  ggplot() +
+  geom_sf(data = buffered_sf, colour = "#328573", fill = "#d5ede888") +
+  theme_bw()
+```
+
+Clearly drawing a box around these will make for a better map.
+
+```{r crop map}
+# Cropped map
+coast_crop_sf <- buffered_sf %>%
+    # Draw box around buffer
+    st_bbox(crs = st_crs(species_sf)) %>%
+    # Crop to box - look!  No warnings!
+    st_crop(coastlines, .)
+```
+
+Now let's project the data onto the map.  There is some finicking because
+I wanted nicely spaced breaks, and `scales::breaks_extended()` wasn't
+working for axis ticks generated via `geom_sf()`.
+
+```{r plot, fig.height = 3, fig.align = "center", fig.cap = "A map where I can see clearly that all my points are on the coast"}
+# For adjusting axis limits to get pretty breaks
+# Extract the coordinates from the geometry, into columns X and Y
+limits_df <- st_coordinates(coast_crop_sf) %>%
+  # Didn't want a matrix
+  as_tibble() %>%
+  # Two rows, first one min, second max
+  summarise(across(c(X, Y), range)) %>%
+  # Round to nearest 0.5 for pleasing breaks
+  mutate(across(everything(), ~ round(2 * .x) * .5))      
+
+ggplot() +
+  # Plot the map
+  geom_sf(data = coast_crop_sf) +
+  # Add the points
+  geom_sf(data = species_sf, colour = "#328573", size = 2.5) +
+  # Impose the same projection on the whole lot
+  coord_sf(crs = st_crs(species_sf)) +
+  # Gets me breaks starting at a multiple of 0.5, with separation 0.5
+  expand_limits(x = c(limits_df$X - 0.05, limits_df$X + 0.05)) +
+  labs(
+    x = "Longitude",
+    y = "Latitude"
+  ) +
+  theme_bw()
+```
+
